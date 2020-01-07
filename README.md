@@ -8,8 +8,10 @@ All you need to do is head to our free server pool, register your local machine 
 
 Your local machine is now public facing :) (Thanks us later)
 
-
 #Future Goals
 1. SSL/TLS
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> check
