@@ -12,5 +12,3 @@ Your local machine is now public facing :) (Thanks us later)
 #Future Goals
 1. SSL/TLS
 
-
-@author: Abhishek Gupta
