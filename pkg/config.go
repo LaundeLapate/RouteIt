@@ -8,4 +8,4 @@ const IsPacketForPing int8 = 1
 
 
 var EthernetInterface   string
-var ServerHolePunchAddr net.IPAddr = net.IPAddr{IP: net.ParseIP(SERVER_ADDR)}
+var ServerHolePunchAddr net.IPAddr = net.IPAddr{IP: net.ParseIP(ServerAddr)}

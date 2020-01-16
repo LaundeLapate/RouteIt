@@ -31,7 +31,7 @@ func (p *ClientsServer) UpdateNatDetails(newNatIP net.IPAddr, newNatPort int16) 
 
 // UpdateDeviceUsed allow us to update the Device used by the server's
 // IP assigned to particular clientID.
-func (p *ClientsServer) UpdateDeviceUsed(newDeviceName string)  err{
+func (p *ClientsServer) UpdateDeviceUsed(newDeviceName string) {
 	p.DeviceUsed = newDeviceName
 }
 
