@@ -22,39 +22,23 @@ package packaging
 import (
 	"encoding/hex"
 	"errors"
+
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/sirupsen/logrus"
 )
 
-// TransportInfo contains information regarding
-// source and destination port of the the packet
-// and transLayer from which further details can
-// be extracted.
-type TransportInfo struct {
-	srcPort            int16
-	dstPort 		   int16
-	transLayer         gopacket.Layer
-}
-
-// This allow us extraction of transport from packet
-// data and IPProtocol information.
-func (p *TransportInfo) Init(packet *gopacket.Packet,
-							 protocol layers.IPProtocol) error{
-
-}
-
 // PacketInfo is the struct which contains all
 // the necessary about the packets of all kind
 // non-custom, custom with data or ping.
 type PacketInfo struct {
-	isCustomPacket     bool
-	isPacketForPing    bool
-	ethernetLayer      *layers.Ethernet
-	ipLayer            *layers.IPv4
-	tspLayer		   TransportInfo
-	customLayer        gopacket.Layer
-	remainingPayload   gopacket.Payload
+	IsCustomPacket     bool
+	IsPacketForPing    bool
+	EthernetLayer      layers.Ethernet
+	IpLayer            layers.IPv4
+	TspLayer		   TransportInfo
+	CustomLayer        gopacket.Layer
+	RemainingPayload   gopacket.Payload
 }
 
 // This function initialise the PacketInfo from
@@ -65,7 +49,7 @@ type PacketInfo struct {
 func (p *PacketInfo) ExtractInformation(packet gopacket.Packet,
 										hasCustomLayer bool) error{
 
-	p.isCustomPacket = hasCustomLayer
+	p.IsCustomPacket = hasCustomLayer
 
 	ethernetLayerTmp := packet.Layer(layers.LayerTypeEthernet)
 	// Checking whether ethernet layer is extracted properly.
@@ -73,7 +57,7 @@ func (p *PacketInfo) ExtractInformation(packet gopacket.Packet,
 		errorManagement("EthernetLayer", "", packet)
 		return errors.New("error in extracting ethernet layer")
 	}
-	p.ethernetLayer = ethernetLayerTmp.(*layers.Ethernet)
+	p.EthernetLayer = *(ethernetLayerTmp.(*layers.Ethernet))
 
 	ipv4Layer := packet.Layer(layers.LayerTypeIPv4)
 	// Checking whether IP layer is extracted properly.
@@ -81,25 +65,23 @@ func (p *PacketInfo) ExtractInformation(packet gopacket.Packet,
 		errorManagement("IPv4 layer", "", packet)
 		return errors.New("error in extracting IPv4 layer")
 	}
-	p.ipLayer = ipv4Layer.(*layers.IPv4)
+	p.IpLayer = *(ipv4Layer.(*layers.IPv4))
 
 	// Extracting transport layer information.
-	err := p.tspLayer.Init(&packet, p.ipLayer.Protocol)
+	err := p.TspLayer.Init(&packet, p.IpLayer.Protocol)
 	if err != nil {
 		errorManagement("Transport layer",
-						"IPProtocol was " + string(p.ipLayer.Protocol),
+						"IPProtocol was " + string(p.IpLayer.Protocol),
 						packet)
 		return errors.New("error in extracting IPv4 layer")
 	}
 
-
-	if p.isCustomPacket {
+	if p.IsCustomPacket {
 		// Extraction of custom layer.
 	}
 
 	return nil
 }
-
 
 // This function is created to throw error in
 //formatted manner.
