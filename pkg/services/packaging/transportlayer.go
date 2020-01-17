@@ -45,3 +45,39 @@ func (p *TransportInfo) Init(packet *gopacket.Packet,
 	}
 	return nil
 }
+
+func (p *TransportInfo) CreateTspLayerFromByte(data []byte,
+	                                           protocol layers.IPProtocol) error {
+
+	switch protocol {
+	case layers.IPProtocolTCP:
+		tmpTCPVar := layers.TCP{}
+		var tmp gopacket.DecodeFeedback
+		err := tmpTCPVar.DecodeFromBytes(data, tmp)
+		if err != nil {
+			return err
+		}
+
+		p.TransLayer = &tmpTCPVar
+		p.SrcPort = uint16(tmpTCPVar.SrcPort)
+		p.DstPort = uint16(tmpTCPVar.DstPort)
+
+	case layers.IPProtocolUDP:
+		tmpUDPVar := layers.UDP{}
+		var tmp gopacket.DecodeFeedback
+		err := tmpUDPVar.DecodeFromBytes(data, tmp)
+		if err != nil {
+			return err
+		}
+
+		p.TransLayer = &tmpUDPVar
+		p.SrcPort = uint16(tmpUDPVar.SrcPort)
+		p.DstPort = uint16(tmpUDPVar.DstPort)
+
+	default:
+		return errors.New("packet has protocols other than" +
+			                    "TCP and UDP")
+	}
+
+	return nil
+}
