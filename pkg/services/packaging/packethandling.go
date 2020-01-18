@@ -14,6 +14,8 @@ package packaging
 import (
 	"encoding/hex"
 	"errors"
+	"fmt"
+	"net"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
@@ -105,6 +107,12 @@ func (p *PacketInfo) ConstructPacket(buffer *gopacket.SerializeBuffer,
 	// contain ethernet layer.
 	if addEthernet {
 		allLayers = append(allLayers, &p.EthernetLayer)
+	} else {
+		newEthernetLayer := layers.Ethernet{SrcMAC: net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
+			                               DstMAC: net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
+			                               EthernetType: 0x0800}
+		fmt.Println(hex.Dump(newEthernetLayer.LayerContents()))
+		allLayers = append(allLayers, &newEthernetLayer)
 	}
 	// Adding IP layer.
 	allLayers = append(allLayers, &p.IpLayer)
