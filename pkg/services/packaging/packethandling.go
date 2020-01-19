@@ -14,9 +14,7 @@ package packaging
 import (
 	"encoding/hex"
 	"errors"
-	"fmt"
-	"net"
-
+	"github.com/LaundeLapate/RouteIt/pkg"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/sirupsen/logrus"
@@ -41,17 +39,21 @@ type PacketInfo struct {
 // the variable which provide information whether
 // above packet has custom layer.
 func (p *PacketInfo) ExtractInformation(packet gopacket.Packet,
+										interfaceName string,
 										hasCustomLayer bool) error{
 
 	p.IsCustomPacket = hasCustomLayer
 
-	ethernetLayerTmp := packet.Layer(layers.LayerTypeEthernet)
-	// Checking whether ethernet layer is extracted properly.
-	if ethernetLayerTmp == nil {
-		errorManagement("EthernetLayer", "", packet)
-		return errors.New("error in extracting ethernet layer")
+	// Extracting link layer for ethernet device.
+	if interfaceName == pkg.EthernetInterface {
+		ethernetLayerTmp := packet.Layer(layers.LayerTypeEthernet)
+		// Checking whether ethernet layer is extracted properly.
+		if ethernetLayerTmp == nil {
+			errorManagement("EthernetLayer", "", packet)
+			return errors.New("error in extracting ethernet layer")
+		}
+		p.EthernetLayer = *(ethernetLayerTmp.(*layers.Ethernet))
 	}
-	p.EthernetLayer = *(ethernetLayerTmp.(*layers.Ethernet))
 
 	ipv4Layer := packet.Layer(layers.LayerTypeIPv4)
 	// Checking whether IP layer is extracted properly.
@@ -92,7 +94,7 @@ func (p *PacketInfo) ExtractInformation(packet gopacket.Packet,
 //or not.
 func (p *PacketInfo) ConstructPacket(buffer *gopacket.SerializeBuffer,
 									 options *gopacket.SerializeOptions,
-									 addEthernet bool) ([]byte, error) {
+									 interfaceName string) ([]byte, error) {
 
 	// Appending custom layer at start of payLoad.
 	//customPayLoad := gopacket.Payload(append(p.RemainingPayload.LayerContents(),
@@ -100,20 +102,23 @@ func (p *PacketInfo) ConstructPacket(buffer *gopacket.SerializeBuffer,
 	customPayLoad := p.RemainingPayload
 	// Creating slice to keep all the layers.
 	var allLayers []gopacket.SerializableLayer
+	var err error
 
 	options = &gopacket.SerializeOptions{FixLengths:       true,
 										 ComputeChecksums: true}
-	// Adding ethernet layer as packet must
-	// contain ethernet layer.
-	if addEthernet {
-		allLayers = append(allLayers, &p.EthernetLayer)
-	} else {
-		newEthernetLayer := layers.Ethernet{SrcMAC: net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
-			                               DstMAC: net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
-			                               EthernetType: 0x0800}
-		fmt.Println(hex.Dump(newEthernetLayer.LayerContents()))
-		allLayers = append(allLayers, &newEthernetLayer)
+	// Adding linkLayer as packet must
+	// contain linkLayer.
+	p.EthernetLayer, err = GenerateEthernetLayer(interfaceName,
+												 p.IpLayer.SrcIP,
+												 p.IpLayer.DstIP)
+
+	// Checking for error in link layer.
+	if err != nil {
+		logrus.Debug("Error in creating the layer link layer")
+		return []byte{}, err
 	}
+	allLayers = append(allLayers, &p.EthernetLayer)
+
 	// Adding IP layer.
 	allLayers = append(allLayers, &p.IpLayer)
 	// Serializing buffer on the basis of
@@ -151,7 +156,7 @@ func (p *PacketInfo) ConstructPacket(buffer *gopacket.SerializeBuffer,
 	allLayers = append(allLayers, customPayLoad)
 
 	// Serialising the buffer.
-	err := gopacket.SerializeLayers(*buffer, *options, allLayers...)
+	err = gopacket.SerializeLayers(*buffer, *options, allLayers...)
 
 	if err != nil {
 		return []byte{}, nil

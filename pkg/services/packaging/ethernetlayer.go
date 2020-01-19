@@ -7,6 +7,7 @@ package packaging
 import (
 	"errors"
 	"net"
+	"strings"
 	"time"
 
 	"github.com/LaundeLapate/RouteIt/pkg"
@@ -15,7 +16,9 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-var AllConstructedClients map[string]*arp.Client
+var AllConstructedClients    = make(map[string]*arp.Client)
+var AllConstructedInterfaces = make(map[string]net.Interface)
+var AllInterfacesAddress     = make(map[string]net.IP)
 var ethernetClientCreate bool = false
 var timeOutCst           time.Duration  = 1000 * time.Millisecond
 
@@ -37,7 +40,7 @@ func GenerateEthernetLayer(interfaceName string,
 	// Construction of ethernetFrame
 	if interfaceName == pkg.EthernetInterface {
 		if !ethernetClientCreate {
-			AllConstructedClients[interfaceName], err = createClient(interfaceName)
+			err = createClient(interfaceName)
 			if err != nil {
 				logrus.Debug("Can't create a client variable " +
 					                  "for %s", interfaceName)
@@ -46,8 +49,12 @@ func GenerateEthernetLayer(interfaceName string,
 			ethernetClientCreate = true
 		}
 		clientName := AllConstructedClients[interfaceName]
-		constructedEthernetLayer.SrcMAC, err  = ResolveWrapper(*clientName, srcIPAdd)
-		constructedEthernetLayer.DstMAC, err  = ResolveWrapper(*clientName, dstIPAdd)
+		constructedEthernetLayer.SrcMAC, err  = ResolveWrapper(*clientName,
+																srcIPAdd,
+																interfaceName)
+		constructedEthernetLayer.DstMAC, err  = ResolveWrapper(*clientName,
+																dstIPAdd,
+																interfaceName)
 		constructedEthernetLayer.EthernetType = 0x0800
 	}
 
@@ -59,23 +66,38 @@ func GenerateEthernetLayer(interfaceName string,
 	return constructedEthernetLayer, nil
 }
 
-func createClient(interfaceName string) (*arp.Client, error){
+func createClient(interfaceName string) error {
 	interfaceVar, err := net.InterfaceByName(interfaceName)
 	if err != nil {
 		logrus.Debug("interface for %s can't be determined", interfaceName)
-		return nil, err
+		return  err
 	}
+	// Constructing interface for given device.
+	AllConstructedInterfaces[interfaceName] = *interfaceVar
+
+	// Extracting address for given device.
+	allAddress, _ := (*interfaceVar).Addrs()
+	addressInString := strings.Split(allAddress[0].String(), "/")[0]
+	AllInterfacesAddress[interfaceName] = net.ParseIP(addressInString)
 
 	clientForInterface, errForClient := arp.Dial(interfaceVar)
 	if errForClient != nil {
-		logrus.Debug("client't can't be created for %s interface", clientForInterface)
+		logrus.Debug("client't can't be created for %s " +
+							  "interface", clientForInterface)
 	}
+
 	AllConstructedClients[interfaceName] = clientForInterface
+	return errForClient
 }
 
 // Wrapper over resolve which allow us to macAddress
 // corresponding to device along with a timeout.
-func ResolveWrapper(client arp.Client, ipAddr net.IP) (net.HardwareAddr, error) {
+func ResolveWrapper(client arp.Client, ipAddr net.IP, interfaceName string) (net.HardwareAddr, error) {
+	// constructing the IP Address of device
+	if AllInterfacesAddress[interfaceName].String() == ipAddr.String() {
+		return client.HardwareAddr(), nil
+	}
+
 	timeOutChannel := make(chan string, 1)
 	var macAddr net.HardwareAddr
 	var err error
@@ -96,8 +118,8 @@ func ResolveWrapper(client arp.Client, ipAddr net.IP) (net.HardwareAddr, error) 
 		}
 		return macAddr, nil
 	case <- time.After(timeOutCst):
-		logrus.Debug("Mac Address of %s and %d can't be computed",
-							  client.HardwareAddr(), ipAddr.String())
+		logrus.Debug("Mac Address of %s and %d can't be computed due " +
+							"to timeout", client.HardwareAddr(), ipAddr.String())
 		return macAddr, errors.New("timout mac address can't be computed")
 	}
 }
