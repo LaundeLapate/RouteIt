@@ -3,34 +3,25 @@ This module permits us to extract all the basic
 details from the data packet as it permit us to
 extract the information that is being extracted.
 are:
-
-// TODO: rewrite the definition.
-// TODO: Add separate error variable for IPv6 and
-// TODO: and none TCP and UDP data packets.
-// TODO: solution it data packet size exceed packet size.
  */
 package packaging
 
 import (
-	"encoding/hex"
-	"errors"
-	"github.com/LaundeLapate/RouteIt/pkg"
-	"github.com/google/gopacket"
-	"github.com/google/gopacket/layers"
-	"github.com/sirupsen/logrus"
+    "github.com/LaundeLapate/RouteIt/pkg/services/customerrors"
+    "github.com/google/gopacket"
+    "github.com/google/gopacket/layers"
+    "github.com/sirupsen/logrus"
 )
 
 // PacketInfo is the struct which contains all
 // the necessary about the packets of all kind
 // non-custom, custom with data or ping.
 type PacketInfo struct {
-	IsCustomPacket     bool
-	IsPacketForPing    bool
-	EthernetLayer      layers.Ethernet
-	IpLayer            layers.IPv4
-	TspLayer		   TransportInfo
-	AdditionalLayer    CustomLayer
-	RemainingPayload   gopacket.Payload
+    EthernetLayer      layers.Ethernet
+    IpLayer            layers.IPv4
+    TspLayer           TransportInfo
+    AdditionalLayer    CustomLayer
+    RemainingPayload   gopacket.Payload
 }
 
 // This function initialise the PacketInfo from
@@ -39,139 +30,120 @@ type PacketInfo struct {
 // the variable which provide information whether
 // above packet has custom layer.
 func (p *PacketInfo) ExtractInformation(packet gopacket.Packet,
-										interfaceName string,
-										hasCustomLayer bool) error{
+                                        linkLayerIsThere bool) error {
 
-	p.IsCustomPacket = hasCustomLayer
+    // Extracting link layer for ethernet device.
+    if linkLayerIsThere {
+	extractedEthernetLayer := packet.Layer(layers.LayerTypeEthernet)
 
-	// Extracting link layer for ethernet device.
-	if interfaceName == pkg.EthernetInterface {
-		ethernetLayerTmp := packet.Layer(layers.LayerTypeEthernet)
-		// Checking whether ethernet layer is extracted properly.
-		if ethernetLayerTmp == nil {
-			errorManagement("EthernetLayer", "", packet)
-			return errors.New("error in extracting ethernet layer")
-		}
-		p.EthernetLayer = *(ethernetLayerTmp.(*layers.Ethernet))
+	// Checking whether ethernet layer is extracted properly.
+	if extractedEthernetLayer == nil {
+	    logrus.Debugf("Error during extraction of linkLayer \n")
+	    return customerrors.ErrorInEthernetExtraction
 	}
+	p.EthernetLayer = *(extractedEthernetLayer.(*layers.Ethernet))
+    }
 
-	ipv4Layer := packet.Layer(layers.LayerTypeIPv4)
-	// Checking whether IP layer is extracted properly.
-	if ipv4Layer == nil {
-		errorManagement("IPv4 layer", "", packet)
-		return errors.New("IPv6 is being used`")
-	}
-	p.IpLayer = *(ipv4Layer.(*layers.IPv4))
+    // Extracting IPv4 layer.
+    ipv4Layer := packet.Layer(layers.LayerTypeIPv4)
 
-	// Extracting transport layer information.
-	err := p.TspLayer.Init(&packet, p.IpLayer.Protocol)
-	if err != nil {
-		errorManagement("Transport layer",
-						"IPProtocol was " + string(p.IpLayer.Protocol),
-						packet)
-		return errors.New("error in extracting IPv4 layer")
-	}
+    // Checking whether IP layer is extracted properly.
+    if ipv4Layer == nil {
+	logrus.Debugf("IPv6 data packet \n")
+	return customerrors.ErrorInIPExtraction
+    }
+    p.IpLayer = *(ipv4Layer.(*layers.IPv4))
 
-	if packet.ApplicationLayer() != nil {
-		p.RemainingPayload = packet.ApplicationLayer().Payload()
-	}
+    // Extracting transport layer information.
+    err := p.TspLayer.Init(&packet, p.IpLayer.Protocol)
+    if err != nil {
+        logrus.Debugf("Error in Extraction in transport layer \n")
+        logrus.Debug(err)
+        return customerrors.ErrorInTransportLayerExtraction
+    }
 
-	if p.IsCustomPacket {
-		err := p.AdditionalLayer.DecodeFromPayload(p.RemainingPayload)
-		if err != nil {
-			return err
-		}
-		p.RemainingPayload = p.AdditionalLayer.TspLayer.TransLayer.LayerPayload()
-	}
-	return nil
+    if packet.ApplicationLayer() != nil {
+	    p.RemainingPayload = packet.ApplicationLayer().Payload()
+    }
+
+    return nil
 }
 
-// This method permit us to construct packet of both
-// type which can be send throw wire.
-// buffer represents the actual buffer to which packet
-// is going to be transmitted.
-// addEthernet tell us to whether to add ethernet layer
-//or not.
-func (p *PacketInfo) ConstructPacket(buffer *gopacket.SerializeBuffer,
-									 options *gopacket.SerializeOptions,
-									 interfaceName string) ([]byte, error) {
+// This method construct the packets data in to bytes
+// which we will able to send throw wires.
+func (p *PacketInfo) ConstructPacket(buffer  *gopacket.SerializeBuffer,
+                                     options *gopacket.SerializeOptions,
+                                     sendInternally bool,
+                                     interfaceName string) ([]byte, error) {
 
-	// Appending custom layer at start of payLoad.
-	//customPayLoad := gopacket.Payload(append(p.RemainingPayload.LayerContents(),
-	//								         p.RemainingPayload...))
-	customPayLoad := p.RemainingPayload
-	// Creating slice to keep all the layers.
-	var allLayers []gopacket.SerializableLayer
-	var err error
+    // Appending custom layer at start of payLoad.
+    customPayLoad := p.RemainingPayload
+    // Creating slice to keep all the layers.
+    var allLayers []gopacket.SerializableLayer
+    var err error
 
-	options = &gopacket.SerializeOptions{FixLengths:       true,
-										 ComputeChecksums: true}
+    // Options shows various parameter that that is
+    // lenght of new packet is same and we have to
+    // recompute the checksum.
+    options = &gopacket.SerializeOptions{FixLengths: false,
+                                         ComputeChecksums: true}
+
+    // Checking whether packet should have link layer.
+    if sendInternally {
 	// Adding linkLayer as packet must
 	// contain linkLayer.
 	p.EthernetLayer, err = GenerateEthernetLayer(interfaceName,
-												 p.IpLayer.SrcIP,
-												 p.IpLayer.DstIP)
+						     p.IpLayer.SrcIP,
+						     p.IpLayer.DstIP)
 
 	// Checking for error in link layer.
 	if err != nil {
-		logrus.Debug("Error in creating the layer link layer")
-		return []byte{}, err
+	    logrus.Debug("Error in creating the layer link layer")
+	    return []byte{}, err
 	}
 	allLayers = append(allLayers, &p.EthernetLayer)
+    }
 
-	// Adding IP layer.
-	allLayers = append(allLayers, &p.IpLayer)
-	// Serializing buffer on the basis of
-	// type of transport layer.
-	*buffer = gopacket.NewSerializeBuffer()
-	switch p.IpLayer.Protocol {
-	case layers.IPProtocolUDP:
-		// Addition of UDP layer.
-		udpLayerToBeAdded := p.TspLayer.TransLayer.(*layers.UDP)
-		udpLayerToBeAdded.SrcPort = layers.UDPPort(p.TspLayer.SrcPort)
-		udpLayerToBeAdded.DstPort = layers.UDPPort(p.TspLayer.DstPort)
-		err := udpLayerToBeAdded.SetNetworkLayerForChecksum(&p.IpLayer)
-		if err != nil {
-			return []byte{}, errors.New("error in handling udp check sum")
-		}
-		allLayers = append(allLayers, udpLayerToBeAdded)
-
-	case layers.IPProtocolTCP:
-		// Addition of TCP layer.
-		tcpLayerToBeAdded := p.TspLayer.TransLayer.(*layers.TCP)
-		tcpLayerToBeAdded.DstPort = layers.TCPPort(p.TspLayer.DstPort)
-		tcpLayerToBeAdded.SrcPort = layers.TCPPort(p.TspLayer.SrcPort)
-		err := tcpLayerToBeAdded.SetNetworkLayerForChecksum(&p.IpLayer)
-		if err != nil {
-			return []byte{}, errors.New("error in handling tcp check sum")
-		}
-		allLayers = append(allLayers, tcpLayerToBeAdded)
-
-	default:
-		return []byte{}, errors.New("error in handling tcp check sum")
-
-	}
-
-	// Adding payload to the packet.
-	allLayers = append(allLayers, customPayLoad)
-
-	// Serialising the buffer.
-	err = gopacket.SerializeLayers(*buffer, *options, allLayers...)
-
+    // Adding IP layer.
+    allLayers = append(allLayers, &p.IpLayer)
+    // Serializing buffer on the basis of
+    // type of transport layer.
+    *buffer = gopacket.NewSerializeBuffer()
+    switch p.IpLayer.Protocol {
+    case layers.IPProtocolUDP:
+	// Addition of UDP layer.
+	udpLayerToBeAdded := p.TspLayer.TransLayer.(*layers.UDP)
+	udpLayerToBeAdded.SrcPort = layers.UDPPort(p.TspLayer.SrcPort)
+	udpLayerToBeAdded.DstPort = layers.UDPPort(p.TspLayer.DstPort)
+	err := udpLayerToBeAdded.SetNetworkLayerForChecksum(&p.IpLayer)
 	if err != nil {
-		return []byte{}, nil
+		return []byte{}, customerrors.WrongUDPCheckSum
 	}
-	return (*buffer).Bytes(), nil
-}
+	allLayers = append(allLayers, udpLayerToBeAdded)
 
-// This function is created to throw error in
-//formatted manner.
-func errorManagement(errLayer, msg string, packet gopacket.Packet) {
-	logrus.Debug("Error in extraction of " + errLayer + " of " +
-		                  "packet")
-	if len(msg) != 0 {
-		logrus.Debug(msg)
+    case layers.IPProtocolTCP:
+	// Addition of TCP layer.
+	tcpLayerToBeAdded := p.TspLayer.TransLayer.(*layers.TCP)
+	tcpLayerToBeAdded.DstPort = layers.TCPPort(p.TspLayer.DstPort)
+	tcpLayerToBeAdded.SrcPort = layers.TCPPort(p.TspLayer.SrcPort)
+	err := tcpLayerToBeAdded.SetNetworkLayerForChecksum(&p.IpLayer)
+	if err != nil {
+		return []byte{}, customerrors.WrongTCPCheckSum
 	}
-	// Dumping all the information in hexadecimal format.
-	logrus.Debug("Pkt Information is", hex.Dump(packet.Data()))
+	allLayers = append(allLayers, tcpLayerToBeAdded)
+
+    default:
+	return []byte{}, customerrors.LayerIsNotTCPOrUDP
+    }
+
+    // Adding payload to the packet.
+    allLayers = append(allLayers, customPayLoad)
+
+    // Serialising the buffer.
+    err = gopacket.SerializeLayers(*buffer, *options, allLayers...)
+
+    if err != nil {
+	    return []byte{}, nil
+    }
+    return (*buffer).Bytes(), nil
 }

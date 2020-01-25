@@ -1,86 +1,60 @@
+/*
+This module have basic dataStructures and functions
+that may be required for creation and management of
+custom layer.
+*/
 package packaging
 
 import (
 	"encoding/binary"
-	"errors"
 	"net"
 
 	"github.com/LaundeLapate/RouteIt/pkg"
-	"github.com/google/gopacket"
-	"github.com/google/gopacket/layers"
+	"github.com/LaundeLapate/RouteIt/pkg/services/customerrors"
+	"github.com/sirupsen/logrus"
 )
 
 type CustomLayer struct {
-	// IsPing represents whether the packet is for
-	// pinging or has actual data tobe transported.
-	IsPing        uint8
-	ClientSeverID uint64
-	ClientIP      net.IPAddr
-	ClientPort    uint16
-	IPProtocol    layers.IPProtocol
-	// Transport layer of old packet.
-	TspLayer      TransportInfo
+    // IsPing represents whether the packet is for
+    // pinging or has actual data tobe transported.
+    IsPing        uint8
+    ClientSeverID uint64
+    ClientIP      net.IPAddr
+    ClientPort    uint16
 }
 
-// This method allow us to extract custom layer
-// from the payload from where it has been extracted.
-func (l *CustomLayer) DecodeFromPayload(payload gopacket.Payload) error {
-	var data = []byte(payload)
-	// Checking whether packet is at least for ping
-	// message.
-	if len(data) < 9 {
-		return errors.New("custom layer is not create properly")
-	}
+// This method allow us to convert CustomLayer struct
+// to its respective byte data that is of fix length
+// @CustomLayerByteSize.
+func (l *CustomLayer) CovertCustomLayerToBytes() []byte {
+    var convertedData = make([]byte, pkg.CustomLayerByteSize)
+    convertedData[0] = l.IsPing
 
-	l.IsPing = data[0]
-	l.ClientSeverID = binary.BigEndian.Uint64(data[1:9])
+    // Adding clientID to the custom layer.
+    binary.BigEndian.PutUint64(convertedData[1:9], l.ClientSeverID)
 
-	// Packet was there for ping message.
-	if l.IsPing == pkg.IsPacketForPing {
-		return nil
-	}
+    // Appending clientIP and Port to the custom
+    // layer.
+    binary.BigEndian.PutUint16(convertedData[10:12], l.ClientPort)
+    copy(convertedData[12:16], l.ClientIP.IP)
 
-	// Since packet is not for ping message therefore it
-	// must have least length of 17.
-	if len(data) < 17 {
-		return errors.New("header Size is less than 16 byte")
-	}
-
-	l.ClientPort    = binary.BigEndian.Uint16(data[10:12])
-	l.ClientIP   = net.IPAddr{IP: data[12:16]}
-	l.IPProtocol = layers.IPProtocol(int8(data[16]))
-	data = data[16:]
-
-	// Creating Transport Layer from given data bits.
-	err := l.TspLayer.CreateTspLayerFromByte(data, l.IPProtocol)
-	if err != nil {
-		return err
-	}
-	return nil
+    return convertedData
 }
 
-// This layer allow us to encode the CustomLayer
-// struct into. byte data which can be further
-// merged with payload.
-func (l *CustomLayer) EncodeTransportInfo() []byte {
-	layerData := make([]byte, 9)
-	if l.IsPing != pkg.IsPacketForPing {
-		layerData = make([]byte, 17)
-	}
-	layerData[0] = l.IsPing
-	binary.BigEndian.PutUint64(layerData[1:9], l.ClientSeverID)
+// This method all us to intialise the custom layer from
+// provided byte data.
+func (l *CustomLayer) CreateLayerFromByte(customLayerData []byte) error {
 
-	// Checking whether custom layer is for
-	// pinging purpose if so we only send
-	// clientID.
-	if l.IsPing == pkg.IsPacketForPing {
-		return layerData
-	}
+    // Validating whether layer is proper or not.
+    if len(customLayerData) != int(pkg.CustomLayerByteSize) {
+	logrus.Debugf("Unable to extract custom layer as improper size. \n")
+	return customerrors.InProperCustomLayer
+    }
+    // Extracting various parameters.
+    l.IsPing        = customLayerData[0]
+    l.ClientSeverID = binary.BigEndian.Uint64(customLayerData[1:9])
+    l.ClientPort    = binary.BigEndian.Uint16(customLayerData[10:12])
+    l.ClientIP      = net.IPAddr{IP: customLayerData[12:16]}
 
-	// Appending remaining data in other case.
-	binary.BigEndian.PutUint16(layerData[10:12], l.ClientPort)
-	copy(layerData[12:16], l.ClientIP.IP)
-	layerData[16] = byte(l.IPProtocol)
-	layerData = append(layerData, l.TspLayer.TransLayer.LayerContents()...)
-	return layerData
+    return nil
 }
