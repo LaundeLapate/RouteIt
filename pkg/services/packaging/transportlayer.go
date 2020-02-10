@@ -1,7 +1,7 @@
 /*
-This module have Data Structures and method
-which will be require to extract information
-from packet.
+This module has Data Structures and method
+which will be required to extract information
+from the packet.
  */
 package packaging
 
@@ -13,8 +13,8 @@ import (
 )
 
 // TransportInfo contains information regarding
-// source and destination port of the the packet
-// and transLayer from which further details can
+// source and destination port of the packet and
+// transLayer from which further details can
 // be extracted.
 type TransportInfo struct {
 	SrcPort            uint16
@@ -22,7 +22,7 @@ type TransportInfo struct {
 	TransLayer         gopacket.Layer
 }
 
-// This allow us extraction of transport from packet
+// This allows us extraction of transport from packet
 // data and IPProtocol information.
 func (p *TransportInfo) Init(packet *gopacket.Packet,
                              protocol layers.IPProtocol) error {

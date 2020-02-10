@@ -1,5 +1,5 @@
 /*
-This module have basic dataStructures and functions
+This module has basic dataStructures and functions
 that may be required for creation and management of
 custom layer.
 */
@@ -19,7 +19,7 @@ type CustomLayer struct {
     // pinging or has actual data tobe transported.
     IsPing        uint8
     ClientSeverID uint64
-    ClientIP      net.IPAddr
+    ClientIP      net.IP
     ClientPort    uint16
 }
 
@@ -36,7 +36,7 @@ func (l *CustomLayer) CovertCustomLayerToBytes() []byte {
     // Appending clientIP and Port to the custom
     // layer.
     binary.BigEndian.PutUint16(convertedData[10:12], l.ClientPort)
-    copy(convertedData[12:16], l.ClientIP.IP)
+    copy(convertedData[12:16], l.ClientIP)
 
     return convertedData
 }
@@ -54,7 +54,7 @@ func (l *CustomLayer) CreateLayerFromByte(customLayerData []byte) error {
     l.IsPing        = customLayerData[0]
     l.ClientSeverID = binary.BigEndian.Uint64(customLayerData[1:9])
     l.ClientPort    = binary.BigEndian.Uint16(customLayerData[10:12])
-    l.ClientIP      = net.IPAddr{IP: customLayerData[12:16]}
+    l.ClientIP      = customLayerData[12:16]
 
     return nil
 }

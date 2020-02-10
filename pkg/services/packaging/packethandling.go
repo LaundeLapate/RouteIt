@@ -24,8 +24,8 @@ type PacketInfo struct {
     RemainingPayload   gopacket.Payload
 }
 
-// This function initialise the PacketInfo from
-// the packet. "packet" defines the actual packet
+// This function initialises the PacketInfo from
+// the packet. "packet" defines the actual packet.
 // which will be decoded, "hasCustomLayer" is
 // the variable which provide information whether
 // above packet has custom layer.
@@ -36,7 +36,7 @@ func (p *PacketInfo) ExtractInformation(packet gopacket.Packet,
     if linkLayerIsThere {
 	extractedEthernetLayer := packet.Layer(layers.LayerTypeEthernet)
 
-	// Checking whether ethernet layer is extracted properly.
+	// Checking whether ethernet layer has extracted properly.
 	if extractedEthernetLayer == nil {
 	    logrus.Debugf("Error during extraction of linkLayer \n")
 	    return customerrors.ErrorInEthernetExtraction
@@ -47,7 +47,7 @@ func (p *PacketInfo) ExtractInformation(packet gopacket.Packet,
     // Extracting IPv4 layer.
     ipv4Layer := packet.Layer(layers.LayerTypeIPv4)
 
-    // Checking whether IP layer is extracted properly.
+    // Checking whether IP layer has extracted properly.
     if ipv4Layer == nil {
 	logrus.Debugf("IPv6 data packet \n")
 	return customerrors.ErrorInIPExtraction
@@ -69,12 +69,16 @@ func (p *PacketInfo) ExtractInformation(packet gopacket.Packet,
     return nil
 }
 
-// This method construct the packets data in to bytes
+// This method construct the packet's data in to bytes
 // which we will able to send throw wires.
-func (p *PacketInfo) ConstructPacket(buffer  *gopacket.SerializeBuffer,
-                                     options *gopacket.SerializeOptions,
-                                     sendInternally bool,
+func (p *PacketInfo) ConstructPacket(sendInternally bool,
                                      interfaceName string) ([]byte, error) {
+
+    // Creating buffer and options for packet serialisation.
+    // Assigning options as fixLenght and CheckSum as false and true.
+    var buffer  gopacket.SerializeBuffer  = gopacket.NewSerializeBuffer()
+    var options gopacket.SerializeOptions = gopacket.SerializeOptions{FixLengths: false,
+								      ComputeChecksums: true}
 
     // Appending custom layer at start of payLoad.
     customPayLoad := p.RemainingPayload
@@ -82,20 +86,13 @@ func (p *PacketInfo) ConstructPacket(buffer  *gopacket.SerializeBuffer,
     var allLayers []gopacket.SerializableLayer
     var err error
 
-    // Options shows various parameter that that is
-    // lenght of new packet is same and we have to
-    // recompute the checksum.
-    options = &gopacket.SerializeOptions{FixLengths: false,
-                                         ComputeChecksums: true}
-
     // Checking whether packet should have link layer.
-    if sendInternally {
+    if sendInternally == false {
 	// Adding linkLayer as packet must
 	// contain linkLayer.
 	p.EthernetLayer, err = GenerateEthernetLayer(interfaceName,
 						     p.IpLayer.SrcIP,
 						     p.IpLayer.DstIP)
-
 	// Checking for error in link layer.
 	if err != nil {
 	    logrus.Debug("Error in creating the layer link layer")
@@ -106,9 +103,7 @@ func (p *PacketInfo) ConstructPacket(buffer  *gopacket.SerializeBuffer,
 
     // Adding IP layer.
     allLayers = append(allLayers, &p.IpLayer)
-    // Serializing buffer on the basis of
-    // type of transport layer.
-    *buffer = gopacket.NewSerializeBuffer()
+
     switch p.IpLayer.Protocol {
     case layers.IPProtocolUDP:
 	// Addition of UDP layer.
@@ -140,10 +135,10 @@ func (p *PacketInfo) ConstructPacket(buffer  *gopacket.SerializeBuffer,
     allLayers = append(allLayers, customPayLoad)
 
     // Serialising the buffer.
-    err = gopacket.SerializeLayers(*buffer, *options, allLayers...)
+    err = gopacket.SerializeLayers(buffer, options, allLayers...)
 
     if err != nil {
 	    return []byte{}, nil
     }
-    return (*buffer).Bytes(), nil
+    return (buffer).Bytes(), nil
 }

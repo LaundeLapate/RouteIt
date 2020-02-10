@@ -1,7 +1,7 @@
 /*
-This module provide functionality of adding
+This module provides functionality of adding
 and combining and parsing custom layer with
-actual packet.
+an actual packet.
  */
 
 package packaging
@@ -16,19 +16,19 @@ import (
 )
 
 // This method allow us to add combine actual
-// packet with custom layer to make to make is
+// packet with custom layer to make is
 // transportable from the punched hole over the
 // NAT.
-func AddCustomLayerToPacketInfo(nonCustomPacket PacketInfo,
-    				dstIP   net.IP,
+func AddCustomLayerToPacketInfo(dstIP   net.IP,
     				dstPort uint16,
+                                nonCustomPacket PacketInfo,
                                 customLayerParameters CustomLayer) PacketInfo {
 
-    customPacket := nonCustomPacket
-    newIPLayer   := layers.IPv4{}
-    newUDPLayer  := layers.UDP{}
+    customPacket := PacketInfo{}
+    newIPLayer   := pkg.IPLayerForPrototype
+    newUDPLayer  := pkg.UDPLayerForPrototype
 
-    // Constructing IP layer for packet.
+    // Constructing IP layer for a packet.
     newIPLayer.DstIP    = dstIP
     newIPLayer.SrcIP    = pkg.ServerAddr.IP
     newIPLayer.Protocol = layers.IPProtocolUDP
@@ -36,8 +36,9 @@ func AddCustomLayerToPacketInfo(nonCustomPacket PacketInfo,
     // Creating the custom payload as combination
     // custom layer and all the value from above
     // Ethernet layer.
+    payloadFromIPlayer := append(nonCustomPacket.IpLayer.Contents, nonCustomPacket.IpLayer.Payload...)
     payloadForCustomLayer := append(customLayerParameters.CovertCustomLayerToBytes(),
-                                    nonCustomPacket.EthernetLayer.Payload...)
+                                    payloadFromIPlayer...)
 
     // Constructing Transport layer for the packet.
     newUDPLayer.SrcPort           = layers.UDPPort(pkg.HolePunchPort)
@@ -45,6 +46,10 @@ func AddCustomLayerToPacketInfo(nonCustomPacket PacketInfo,
     newUDPLayer.DstPort           = layers.UDPPort(dstPort)
     customPacket.TspLayer.DstPort = dstPort
     newUDPLayer.Payload = payloadForCustomLayer
+
+    // Updating the lenght of various layers.
+    newUDPLayer.Length += uint16(len(payloadForCustomLayer))
+    newIPLayer.Length  += newUDPLayer.Length
 
     // Appending all the parameters to our
     // custom layer.
@@ -85,7 +90,7 @@ func ExtractCustomLayer(customPacket PacketInfo) (PacketInfo, CustomLayer, error
         return *ExtractedPacketInfo, customPacketInfo, err
     }
 
-    // Extracting packet information from the bytes data.
+    // Extracting packet information from the byte's data.
     err = ExtractedPacketInfo.ExtractInformation(newPacketCreated,
                                 true)
 
