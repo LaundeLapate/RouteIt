@@ -1,4 +1,4 @@
-#RouteIt
+# RouteIt
 
 Always wonder how to make your local internet services publicly accessible? Here we are ready to help you for that
 
@@ -8,5 +8,5 @@ All you need to do is head to our free server pool, register your local machine 
 
 Your local machine is now public facing :) (Thanks us later)
 
-#Future Goals
-1. SSL/TLS
+#  Future Goals
+-  [ ] Inlcude SSL/TLS for the application
